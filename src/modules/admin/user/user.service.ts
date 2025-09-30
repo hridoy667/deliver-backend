@@ -149,7 +149,10 @@ export class UserService {
       }
       await this.prisma.user.update({
         where: { id: id },
-        data: { approved_at: DateHelper.now() },
+        data: { 
+          approved_at: DateHelper.now(),
+          application_status: 'APPROVED'
+        },
       });
       return {
         success: true,
@@ -176,11 +179,43 @@ export class UserService {
       }
       await this.prisma.user.update({
         where: { id: id },
-        data: { approved_at: null },
+        data: { 
+          approved_at: null,
+          application_status: 'REJECTED'
+        },
       });
       return {
         success: true,
         message: 'User rejected successfully',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  async setUnderReview(id: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: id },
+      });
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+      await this.prisma.user.update({
+        where: { id: id },
+        data: { 
+          application_status: 'UNDER_REVIEW'
+        },
+      });
+      return {
+        success: true,
+        message: 'User set to under review successfully',
       };
     } catch (error) {
       return {

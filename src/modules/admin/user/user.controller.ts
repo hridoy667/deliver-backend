@@ -92,6 +92,22 @@ export class UserController {
     }
   }
 
+  // set user under review
+  @Roles(Role.ADMIN)
+  @ApiResponse({ description: 'Set user under review' })
+  @Post(':id/under-review')
+  async setUnderReview(@Param('id') id: string) {
+    try {
+      const user = await this.userService.setUnderReview(id);
+      return user;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
   @ApiResponse({ description: 'Get a user by id' })
   @Get(':id')
   async findOne(@Param('id') id: string) {
