@@ -28,6 +28,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from '../application/documents/documents.service';
 import { DocumentType } from '@prisma/client';
 import { DocumentTypeEnum } from '../application/documents/dto/upload-document.dto';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -35,6 +36,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private documentsService: DocumentsService,
+    private prisma: PrismaService,
   ) {}
 
   @ApiOperation({ summary: 'Get user details' })
@@ -237,6 +239,37 @@ export class AuthController {
         password,
       } = data;
 
+      // Validate required fields for shipper
+      const requiredFields = {
+        first_name: 'First name',
+        last_name: 'Last name',
+        date_of_birth: 'Date of birth',
+        phone_number: 'Phone number',
+        country: 'Country',
+        address: 'Address',
+        email: 'Email',
+        password: 'Password'
+      };
+
+      const missingFields = [];
+      for (const [field, label] of Object.entries(requiredFields)) {
+        if (!data[field] || data[field].trim() === '') {
+          missingFields.push(label);
+        }
+      }
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          message: `Please fill in all required fields: ${missingFields.join(', ')}`,
+          data: {
+            missingFields: missingFields,
+            requiredFields: Object.values(requiredFields),
+            optionalFields: ['Company name', 'Sector', 'Number of associated users']
+          }
+        };
+      }
+
       // Register the user as shipper
       const registerResponse = await this.authService.register({
         name: `${first_name} ${last_name}`,
@@ -260,6 +293,22 @@ export class AuthController {
           address: address,
           date_of_birth: date_of_birth,
         });
+
+        // Validate that all required documents are provided for shipper
+        const requiredDocuments = ['ID_CARD', 'KBIS', 'PROFILE_PHOTO', 'RIB'];
+        if (!files || files.length < requiredDocuments.length) {
+          // Delete the user if documents are missing
+          await this.prisma.user.delete({ where: { id: userId } });
+          return {
+            success: false,
+            message: `Please upload all required documents. Required: ${requiredDocuments.length} documents, Provided: ${files ? files.length : 0} documents`,
+            data: {
+              requiredDocuments: requiredDocuments,
+              providedDocuments: files ? files.length : 0,
+              missingDocuments: requiredDocuments.slice(files ? files.length : 0)
+            }
+          };
+        }
 
         // TODO: Create user profile with company info
         // await this.userProfileService.createProfile(userId, {
@@ -348,6 +397,43 @@ export class AuthController {
         pallets_accepted,
       } = data;
 
+      // Validate required fields for carrier
+      const requiredFields = {
+        first_name: 'First name',
+        last_name: 'Last name',
+        date_of_birth: 'Date of birth',
+        phone_number: 'Phone number',
+        country: 'Country',
+        address: 'Address',
+        email: 'Email',
+        password: 'Password',
+        vehicle_type: 'Vehicle type',
+        make_model: 'Make and model',
+        license_plate: 'License plate',
+        year_of_registration: 'Year of registration',
+        payload_capacity: 'Payload capacity',
+        volume_m3: 'Volume (m³)'
+      };
+
+      const missingFields = [];
+      for (const [field, label] of Object.entries(requiredFields)) {
+        if (!data[field] || data[field].trim() === '') {
+          missingFields.push(label);
+        }
+      }
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          message: `Please fill in all required fields: ${missingFields.join(', ')}`,
+          data: {
+            missingFields: missingFields,
+            requiredFields: Object.values(requiredFields),
+            optionalFields: ['Company name', 'Sector', 'Number of associated users', 'Loading dimensions', 'Pallets accepted']
+          }
+        };
+      }
+
       // Register the user as carrier
       const registerResponse = await this.authService.register({
         name: `${first_name} ${last_name}`,
@@ -372,6 +458,22 @@ export class AuthController {
           date_of_birth: date_of_birth,
         });
 
+        // Validate that all required documents are provided for carrier
+        const requiredDocuments = ['ID_CARD', 'KBIS', 'DRIVING_LICENSE', 'TRANSPORT_LICENSE', 'INSURANCE_CERTIFICATE', 'PROFILE_PHOTO'];
+        if (!files || files.length < requiredDocuments.length) {
+          // Delete the user if documents are missing
+          await this.prisma.user.delete({ where: { id: userId } });
+          return {
+            success: false,
+            message: `Please upload all required documents. Required: ${requiredDocuments.length} documents, Provided: ${files ? files.length : 0} documents`,
+            data: {
+              requiredDocuments: requiredDocuments,
+              providedDocuments: files ? files.length : 0,
+              missingDocuments: requiredDocuments.slice(files ? files.length : 0)
+            }
+          };
+        }
+
         // TODO: Create user profile with company info
         // await this.userProfileService.createProfile(userId, {
         //   company_name: company_name,
@@ -379,7 +481,22 @@ export class AuthController {
         //   associated_users: associated_users,
         // });
 
-        // TODO: Create vehicle record
+        // Create vehicle record
+        if (vehicle_type && license_plate) {
+          await this.prisma.vehicle.create({
+            data: {
+              type: vehicle_type.toUpperCase() as any, // Convert to VehicleType enum
+              make: make_model ? make_model.split(' ')[0] : null,
+              model: make_model ? make_model.split(' ').slice(1).join(' ') : null,
+              year: year_of_registration ? parseInt(year_of_registration) : null,
+              license_plate: license_plate,
+              capacity_kg: payload_capacity ? parseFloat(payload_capacity) : null,
+              capacity_m3: volume_m3 ? parseFloat(volume_m3) : null,
+              photos: [], // No photos uploaded during registration
+              carrier_id: userId,
+            },
+          });
+        }
         // await this.vehicleService.createVehicle(userId, {
         //   vehicle_type: vehicle_type,
         //   make_model: make_model,
@@ -472,6 +589,40 @@ export class AuthController {
         pallets_accepted,
       } = data;
 
+      // Validate required fields for carrier profile completion
+      const requiredFields = {
+        email: 'Email',
+        phone_number: 'Phone number',
+        country: 'Country',
+        address: 'Address',
+        date_of_birth: 'Date of birth',
+        vehicle_type: 'Vehicle type',
+        make_model: 'Make and model',
+        license_plate: 'License plate',
+        year_of_registration: 'Year of registration',
+        payload_capacity: 'Payload capacity',
+        volume_m3: 'Volume (m³)'
+      };
+
+      const missingFields = [];
+      for (const [field, label] of Object.entries(requiredFields)) {
+        if (!data[field] || data[field].trim() === '') {
+          missingFields.push(label);
+        }
+      }
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          message: `Please fill in all required fields: ${missingFields.join(', ')}`,
+          data: {
+            missingFields: missingFields,
+            requiredFields: Object.values(requiredFields),
+            optionalFields: ['Company name', 'Sector', 'Number of associated users', 'Loading dimensions', 'Pallets accepted']
+          }
+        };
+      }
+
       // Find existing user by email
       const existingUser = await this.authService.findUserByEmail(email);
       if (!existingUser) {
@@ -489,8 +640,37 @@ export class AuthController {
         date_of_birth: date_of_birth,
       });
 
+      // Validate that all required documents are provided for carrier
+      const requiredDocuments = ['ID_CARD', 'KBIS', 'DRIVING_LICENSE', 'TRANSPORT_LICENSE', 'INSURANCE_CERTIFICATE', 'PROFILE_PHOTO'];
+      if (!files || files.length < requiredDocuments.length) {
+        return {
+          success: false,
+          message: `Please upload all required documents. Required: ${requiredDocuments.length} documents, Provided: ${files ? files.length : 0} documents`,
+          data: {
+            requiredDocuments: requiredDocuments,
+            providedDocuments: files ? files.length : 0,
+            missingDocuments: requiredDocuments.slice(files ? files.length : 0)
+          }
+        };
+      }
+
       // TODO: Create user profile with company info
-      // TODO: Create vehicle record
+      // Create vehicle record
+      if (vehicle_type && license_plate) {
+        await this.prisma.vehicle.create({
+          data: {
+            type: vehicle_type.toUpperCase() as any, // Convert to VehicleType enum
+            make: make_model ? make_model.split(' ')[0] : null,
+            model: make_model ? make_model.split(' ').slice(1).join(' ') : null,
+            year: year_of_registration ? parseInt(year_of_registration) : null,
+            license_plate: license_plate,
+            capacity_kg: payload_capacity ? parseFloat(payload_capacity) : null,
+            capacity_m3: volume_m3 ? parseFloat(volume_m3) : null,
+            photos: [], // No photos uploaded during registration
+            carrier_id: existingUser.id,
+          },
+        });
+      }
 
       // Upload documents if provided
       if (files && files.length > 0) {
@@ -562,6 +742,36 @@ export class AuthController {
         associated_users,
       } = data;
 
+      // Validate required fields for shipper profile completion
+      const requiredFields = {
+        email: 'Email',
+        first_name: 'First name',
+        last_name: 'Last name',
+        date_of_birth: 'Date of birth',
+        phone_number: 'Phone number',
+        country: 'Country',
+        address: 'Address'
+      };
+
+      const missingFields = [];
+      for (const [field, label] of Object.entries(requiredFields)) {
+        if (!data[field] || data[field].trim() === '') {
+          missingFields.push(label);
+        }
+      }
+
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          message: `Please fill in all required fields: ${missingFields.join(', ')}`,
+          data: {
+            missingFields: missingFields,
+            requiredFields: Object.values(requiredFields),
+            optionalFields: ['Company name', 'Sector', 'Number of associated users']
+          }
+        };
+      }
+
       // Find existing user by email
       const existingUser = await this.authService.findUserByEmail(email);
       if (!existingUser) {
@@ -578,6 +788,20 @@ export class AuthController {
         address: address,
         date_of_birth: date_of_birth,
       });
+
+      // Validate that all required documents are provided for shipper
+      const requiredDocuments = ['ID_CARD', 'KBIS', 'PROFILE_PHOTO', 'RIB'];
+      if (!files || files.length < requiredDocuments.length) {
+        return {
+          success: false,
+          message: `Please upload all required documents. Required: ${requiredDocuments.length} documents, Provided: ${files ? files.length : 0} documents`,
+          data: {
+            requiredDocuments: requiredDocuments,
+            providedDocuments: files ? files.length : 0,
+            missingDocuments: requiredDocuments.slice(files ? files.length : 0)
+          }
+        };
+      }
 
       // TODO: Create user profile with company info
 
