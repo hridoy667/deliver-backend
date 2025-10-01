@@ -94,6 +94,7 @@ model User {
   received_reviews MissionReview[] @relation("ReceivedReviews")
   shipper_payments Payment[] @relation("ShipperPayments")
   carrier_payments Payment[] @relation("CarrierPayments")
+  carrier_acceptances MissionAcceptance[] @relation("CarrierAcceptances")
 
     // === ADD THESE FIELDS FOR APPROVAL FLOW ===
   application_status UserApplicationStatus @default(PENDING)
@@ -577,8 +578,27 @@ model Mission {
   tracking_points TrackingPoint[]
   mission_reviews MissionReview[]
   payment         Payment?
+  carrier_acceptances MissionAcceptance[] @relation("MissionAcceptances")
   
   @@map("missions")
+}
+
+model MissionAcceptance {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  
+  status     String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  message    String?  // Optional message from carrier
+  
+  // Relations
+  mission_id String
+  mission    Mission @relation("MissionAcceptances", fields: [mission_id], references: [id], onDelete: Cascade)
+  carrier_id String
+  carrier    User    @relation("CarrierAcceptances", fields: [carrier_id], references: [id], onDelete: Cascade)
+  
+  @@unique([mission_id, carrier_id])
+  @@map("mission_acceptances")
 }
 
 model TrackingPoint {

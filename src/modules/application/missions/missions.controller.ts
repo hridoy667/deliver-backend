@@ -12,6 +12,8 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { MissionsService } from './missions.service';
 import { CreateMissionDto } from './dto/create-mission.dto';
 import { AcceptMissionDto } from './dto/accept-mission.dto';
+import { SetPriceDto } from './dto/set-price.dto';
+import { SelectCarrierDto } from './dto/select-carrier.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { Request } from 'express';
 
@@ -35,6 +37,8 @@ export class MissionsController {
       type: userType,
       fullUser: (req as any).user
     });
+    
+    console.log('Mission DTO:', createMissionDto);
 
     // Only shippers can create missions
     if (userType !== 'shipper') {
@@ -121,4 +125,130 @@ export class MissionsController {
 
     return this.missionsService.confirmPayment(missionId);
   }
+
+  // ===== NEW ENHANCED MISSION FLOW ENDPOINTS =====
+
+  @ApiOperation({ summary: 'Set or adjust mission price (Shipper only)' })
+  @ApiResponse({ status: 200, description: 'Mission price updated successfully' })
+  @Post(':id/set-price')
+  async setMissionPrice(
+    @Param('id') missionId: string,
+    @Body() setPriceDto: SetPriceDto,
+    @Req() req: Request
+  ) {
+    const shipperId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    if (userType !== 'shipper') {
+      return {
+        success: false,
+        message: 'Only shippers can set mission prices',
+      };
+    }
+
+    return this.missionsService.setMissionPrice(missionId, setPriceDto.price, shipperId);
+  }
+
+  @ApiOperation({ summary: 'Confirm mission after price setting (Shipper only)' })
+  @ApiResponse({ status: 200, description: 'Mission confirmed successfully' })
+  @Post(':id/confirm')
+  async confirmMission(@Param('id') missionId: string, @Req() req: Request) {
+    const shipperId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    if (userType !== 'shipper') {
+      return {
+        success: false,
+        message: 'Only shippers can confirm missions',
+      };
+    }
+
+    return this.missionsService.confirmMission(missionId, shipperId);
+  }
+
+  @ApiOperation({ summary: 'Get shipper dashboard data (Shipper only)' })
+  @ApiResponse({ status: 200, description: 'Shipper dashboard data retrieved successfully' })
+  @Get('dashboard')
+  async getShipperDashboard(@Req() req: Request) {
+    const shipperId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    if (userType !== 'shipper') {
+      return {
+        success: false,
+        message: 'Only shippers can access dashboard',
+      };
+    }
+
+    return this.missionsService.getShipperDashboard(shipperId);
+  }
+
+  @ApiOperation({ summary: 'Get carriers who accepted a specific mission (Shipper only)' })
+  @ApiResponse({ status: 200, description: 'List of accepted carriers retrieved successfully' })
+  @Get(':id/accepted-carriers')
+  async getAcceptedCarriers(@Param('id') missionId: string, @Req() req: Request) {
+    const shipperId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    if (userType !== 'shipper') {
+      return {
+        success: false,
+        message: 'Only shippers can view accepted carriers',
+      };
+    }
+
+    return this.missionsService.getAcceptedCarriersForMission(missionId, shipperId);
+  }
+
+  @ApiOperation({ summary: 'Shipper selects a carrier for a mission' })
+  @ApiResponse({ status: 200, description: 'Carrier selected successfully' })
+  @Post(':id/select-carrier')
+  async selectCarrier(
+    @Param('id') missionId: string,
+    @Body() selectCarrierDto: SelectCarrierDto,
+    @Req() req: Request
+  ) {
+    const shipperId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    if (userType !== 'shipper') {
+      return {
+        success: false,
+        message: 'Only shippers can select carriers',
+      };
+    }
+
+    return this.missionsService.selectCarrier(missionId, selectCarrierDto.carrier_id, shipperId);
+  }
+
+  @ApiOperation({ summary: 'Accept a mission (Enhanced version using MissionAcceptance)' })
+  @ApiResponse({ status: 200, description: 'Mission acceptance submitted successfully' })
+  @Post(':id/accept-enhanced')
+  async acceptMissionEnhanced(
+    @Param('id') missionId: string,
+    @Body() acceptMissionDto: AcceptMissionDto,
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user.id;
+    const userType = (req as any).user.type;
+
+    console.log('Accept mission request:', {
+      missionId,
+      userId,
+      userType,
+      acceptMissionDto,
+      fullUser: (req as any).user
+    });
+
+    // Only carriers can accept missions
+    if (userType !== 'carrier') {
+      return {
+        success: false,
+        message: 'Only carriers can accept missions',
+      };
+    }
+
+    return this.missionsService.acceptMissionEnhanced(missionId, userId, acceptMissionDto);
+  }
+
 }
