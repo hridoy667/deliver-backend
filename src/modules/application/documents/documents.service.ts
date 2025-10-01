@@ -123,7 +123,7 @@ export class DocumentsService {
   }
 
   /**
-   * Get documents by status (for admin review)
+   * Get documents by status (for admin review) - grouped by user
    */
   async getDocumentsByStatus(status: DocumentStatus) {
     try {
@@ -139,6 +139,7 @@ export class DocumentsService {
               first_name: true,
               last_name: true,
               type: true,
+              avatar: true,
             },
           },
         },
@@ -147,17 +148,47 @@ export class DocumentsService {
         },
       });
 
-      // Add full URLs to documents
-      const documentsWithUrls = documents.map((doc) => ({
-        ...doc,
-        file_url: SojebStorage.url(
-          appConfig().storageUrl.documents + doc.file_url,
-        ),
-      }));
+      // Group documents by user
+      const groupedByUser = documents.reduce((acc, doc) => {
+        const userId = doc.user.id;
+        
+        if (!acc[userId]) {
+          acc[userId] = {
+            user: {
+              id: doc.user.id,
+              name: `${doc.user.first_name} ${doc.user.last_name}`,
+              email: doc.user.email,
+              type: doc.user.type,
+              avatar: doc.user.avatar ? SojebStorage.url(appConfig().storageUrl.avatar + doc.user.avatar) : null,
+            },
+            documents: []
+          };
+        }
+        
+        // Add document with full URL
+        acc[userId].documents.push({
+          id: doc.id,
+          created_at: doc.created_at,
+          updated_at: doc.updated_at,
+          type: doc.type,
+          file_url: SojebStorage.url(appConfig().storageUrl.documents + doc.file_url),
+          file_name: doc.file_name,
+          file_size: doc.file_size,
+          status: doc.status,
+          reviewed_at: doc.reviewed_at,
+          rejection_reason: doc.rejection_reason,
+          expires_at: doc.expires_at,
+        });
+        
+        return acc;
+      }, {});
+
+      // Convert to array format
+      const result = Object.values(groupedByUser);
 
       return {
         success: true,
-        data: documentsWithUrls,
+        data: result,
       };
     } catch (error) {
       return {

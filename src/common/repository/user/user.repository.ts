@@ -256,7 +256,7 @@ export class UserRepository {
       const user = await prisma.user.create({
         data: {
           ...data,
-          application_status: 'PENDING', // Explicitly set to PENDING for new users
+          application_status: type === 'admin' ? 'APPROVED' : 'PENDING', // Admin accounts are auto-approved
         },
       });
 

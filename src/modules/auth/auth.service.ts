@@ -191,8 +191,8 @@ export class AuthService {
           throw new UnauthorizedException('Account is disabled by admin. Please contact support.');
         }
         
-        // Check application status
-        if (user.application_status !== 'APPROVED') {
+        // Check application status (skip for admin accounts)
+        if (user.type !== 'admin' && user.application_status !== 'APPROVED') {
           if (user.application_status === 'PENDING') {
             throw new UnauthorizedException('Your account is pending approval. Please wait for admin review.');
           } else if (user.application_status === 'UNDER_REVIEW') {
