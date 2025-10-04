@@ -204,54 +204,86 @@ export class MissionsService {
 
   async acceptMission(missionId: string, carrierId: string, acceptMissionDto: AcceptMissionDto) {
     try {
+      // Validate carrier exists and is active
+      const carrier = await this.prisma.user.findUnique({
+        where: { id: carrierId },
+        select: { id: true, type: true, status: true }
+      });
+  
+      if (!carrier) {
+        throw new BadRequestException('Carrier not found');
+      }
+  
+      if (carrier.type !== 'carrier') {
+        throw new BadRequestException('Only carriers can accept missions');
+      }
+  
+      if (carrier.status !== 1) {
+        throw new BadRequestException('Carrier account is not active');
+      }
+  
       // Check if mission exists and is available
       const mission = await this.prisma.mission.findUnique({
         where: { id: missionId },
       });
-
+  
       if (!mission) {
         throw new NotFoundException('Mission not found');
       }
-
+  
       if (mission.status !== MissionStatus.SEARCHING_CARRIER && mission.status !== MissionStatus.CREATED) {
         throw new BadRequestException('Mission is not available for acceptance');
       }
-
+  
+      // Check if mission already has a selected carrier
       if (mission.carrier_id) {
-        throw new BadRequestException('Mission has already been accepted');
+        throw new BadRequestException('Mission has already been assigned to a carrier');
       }
-
-      // Update mission status
-      const updatedMission = await this.prisma.mission.update({
-        where: { id: missionId },
+  
+      // Check if carrier has already accepted this mission
+      const existingAcceptance = await this.prisma.missionAcceptance.findUnique({
+        where: {
+          mission_id_carrier_id: {
+            mission_id: missionId,
+            carrier_id: carrierId,
+          },
+        },
+      });
+  
+      if (existingAcceptance) {
+        throw new BadRequestException('You have already accepted this mission');
+      }
+  
+      // Create mission acceptance record (PENDING status)
+      const acceptance = await this.prisma.missionAcceptance.create({
         data: {
+          mission_id: missionId,
           carrier_id: carrierId,
-          status: MissionStatus.ACCEPTED,
+          message: acceptMissionDto.message,
+          status: 'PENDING',
         },
         include: {
-          shipper: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
+          mission: true,
           carrier: {
             select: {
               id: true,
               name: true,
               email: true,
+              avatar: true,
+              average_rating: true,
+              total_reviews: true,
+              completed_missions: true,
             },
           },
         },
       });
-
-      // TODO: Send notification to shipper about mission acceptance
-
+  
+      // TODO: Send notification to shipper about new acceptance
+  
       return {
         success: true,
-        message: 'Mission accepted successfully',
-        data: updatedMission,
+        message: 'Mission acceptance submitted successfully. Waiting for shipper selection.',
+        data: acceptance,
       };
     } catch (error) {
       return {
@@ -577,79 +609,6 @@ export class MissionsService {
           data: updatedMission,
         };
       });
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-      };
-    }
-  }
-
-  // Enhanced accept mission method using MissionAcceptance model
-  async acceptMissionEnhanced(missionId: string, carrierId: string, acceptMissionDto: AcceptMissionDto) {
-    try {
-      
-      // Check if mission exists and is available
-      const mission = await this.prisma.mission.findUnique({
-        where: { id: missionId },
-      });
-
-
-      if (!mission) {
-        throw new NotFoundException('Mission not found');
-      }
-
-      if (mission.status !== MissionStatus.SEARCHING_CARRIER && mission.status !== MissionStatus.CREATED) {
-        throw new BadRequestException('Mission is not available for acceptance');
-      }
-
-      if (mission.carrier_id) {
-        throw new BadRequestException('Mission has already been accepted');
-      }
-
-      // Check if carrier has already accepted this mission
-      const existingAcceptance = await this.prisma.missionAcceptance.findUnique({
-        where: {
-          mission_id_carrier_id: {
-            mission_id: missionId,
-            carrier_id: carrierId,
-          },
-        },
-      });
-
-      if (existingAcceptance) {
-        throw new BadRequestException('You have already accepted this mission');
-      }
-
-      // Create mission acceptance record
-
-      const acceptance = await this.prisma.missionAcceptance.create({
-        data: {
-          mission_id: missionId,
-          carrier_id: carrierId,
-          message: acceptMissionDto.message,
-          status: 'PENDING',
-        },
-        include: {
-          mission: true,
-          carrier: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
-
-
-      // TODO: Send notification to shipper about new acceptance
-
-      return {
-        success: true,
-        message: 'Mission acceptance submitted successfully',
-        data: acceptance,
-      };
     } catch (error) {
       return {
         success: false,

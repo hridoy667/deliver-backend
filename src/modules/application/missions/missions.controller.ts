@@ -22,7 +22,7 @@ import { Request } from 'express';
 @UseGuards(JwtAuthGuard)
 @Controller('missions')
 export class MissionsController {
-  constructor(private readonly missionsService: MissionsService) {}
+  constructor(private readonly missionsService: MissionsService) { }
 
   @ApiOperation({ summary: 'Create a new mission' })
   @ApiResponse({ status: 201, description: 'Mission created successfully' })
@@ -213,34 +213,5 @@ export class MissionsController {
     return this.missionsService.selectCarrier(missionId, selectCarrierDto.carrier_id, shipperId);
   }
 
-  @ApiOperation({ summary: 'Accept a mission (Enhanced version using MissionAcceptance)' })
-  @ApiResponse({ status: 200, description: 'Mission acceptance submitted successfully' })
-  @Post(':id/accept-enhanced')
-  async acceptMissionEnhanced(
-    @Param('id') missionId: string,
-    @Body() acceptMissionDto: AcceptMissionDto,
-    @Req() req: Request,
-  ) {
-    const userId = (req as any).user.id;
-    const userType = (req as any).user.type;
-
-    console.log('Accept mission request:', {
-      missionId,
-      userId,
-      userType,
-      acceptMissionDto,
-      fullUser: (req as any).user
-    });
-
-    // Only carriers can accept missions
-    if (userType !== 'carrier') {
-      return {
-        success: false,
-        message: 'Only carriers can accept missions',
-      };
-    }
-
-    return this.missionsService.acceptMissionEnhanced(missionId, userId, acceptMissionDto);
-  }
 
 }
