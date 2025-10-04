@@ -106,6 +106,10 @@ model User {
   total_reviews      Int?   @default(0)
   completed_missions Int?   @default(0)
 
+  // Promo code relations
+  user_promo_codes   UserPromoCode[]
+  promo_code_usages  PromoCodeUsage[]
+
   @@map("users")
 }
 
@@ -607,6 +611,7 @@ model Mission {
   mission_reviews     MissionReview[]
   payment             Payment?
   carrier_acceptances MissionAcceptance[] @relation("MissionAcceptances")
+  promo_code_usages   PromoCodeUsage[]
 
   @@map("missions")
 }
@@ -758,6 +763,67 @@ enum TemperatureRange {
   AMBIENT       // +15°C to +25°C
   CONTROLLED    // +2°C to +8°C
   OTHER         // Custom temperature requirement
+}
+
+model PromoCode {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  code            String      @unique
+  description     String?
+  discount_type   DiscountType
+  discount_value  Float       // Percentage (0-100) or fixed amount
+  min_order_amount Float?     // Minimum order amount to use this code
+  max_discount    Float?      // Maximum discount amount (for percentage)
+  usage_limit     Int?        // Total usage limit (null = unlimited)
+  used_count      Int         @default(0)
+  user_limit      Int?        // Usage limit per user (null = unlimited)
+  
+  valid_from      DateTime
+  valid_until     DateTime
+  is_active       Boolean     @default(true)
+  
+  // Relations
+  user_restrictions UserPromoCode[] // Users who can use this code
+  usages           PromoCodeUsage[] // Usage history
+
+  @@map("promo_codes")
+}
+
+model UserPromoCode {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  promo_code_id String
+  promo_code    PromoCode @relation(fields: [promo_code_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, promo_code_id])
+  @@map("user_promo_codes")
+}
+
+model PromoCodeUsage {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+
+  promo_code_id String
+  promo_code    PromoCode @relation(fields: [promo_code_id], references: [id], onDelete: Cascade)
+  user_id       String
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  mission_id    String?
+  mission       Mission? @relation(fields: [mission_id], references: [id], onDelete: SetNull)
+  
+  discount_amount Float
+  order_amount    Float
+
+  @@map("promo_code_usages")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
 }
 
 // this table stores example
