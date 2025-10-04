@@ -8,21 +8,21 @@ import { SelectCarrierDto } from './dto/select-carrier.dto';
 
 @Injectable()
 export class MissionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async createMission(createMissionDto: CreateMissionDto, shipperId: string) {
     try {
       // Debug: Check if shipper exists
-      
+
       const shipper = await this.prisma.user.findUnique({
         where: { id: shipperId },
         select: { id: true, name: true, type: true }
       });
-      
+
       if (!shipper) {
         throw new BadRequestException(`Shipper with ID ${shipperId} not found`);
       }
-      
+
 
       // Calculate distance if not provided
       let distance = createMissionDto.distance_km;
@@ -35,7 +35,7 @@ export class MissionsService {
 
       // Calculate pricing
       const pricing = this.calculatePricing(distance, createMissionDto.shipment_type);
-      
+
       // Calculate volume if not provided
       let volume = createMissionDto.volume_m3;
       if (!volume && createMissionDto.length_m && createMissionDto.width_m && createMissionDto.height_m) {
@@ -52,31 +52,31 @@ export class MissionsService {
           delivery_address: `${createMissionDto.delivery_address}, ${createMissionDto.delivery_city} ${createMissionDto.delivery_postal_code}`,
           delivery_city: createMissionDto.delivery_city,
           delivery_postal_code: createMissionDto.delivery_postal_code,
-          
+
           // Contact Information
           pickup_contact_name: createMissionDto.loading_staff_name || 'Contact Name',
           pickup_contact_phone: createMissionDto.shipper_phone,
           delivery_contact_name: createMissionDto.recipient_name,
           delivery_contact_phone: createMissionDto.recipient_phone,
-          
+
           // Shipment Details
           shipment_type: createMissionDto.shipment_type,
           temperature_required: createMissionDto.temperature_required,
-          
+
           // Package Dimensions
           package_length: createMissionDto.length_m,
           package_width: createMissionDto.width_m,
           package_height: createMissionDto.height_m,
-          
+
           // Delivery Timing
           delivery_date: createMissionDto.delivery_date ? new Date(createMissionDto.delivery_date) : null,
           delivery_time: createMissionDto.delivery_time,
-          
+
           // Instructions
           pickup_instructions: createMissionDto.loading_instructions,
           delivery_instructions: createMissionDto.delivery_instructions,
           delivery_message: createMissionDto.delivery_message,
-          
+
           // Goods Information
           goods_type: createMissionDto.goods_type,
           parcels_count: 1, // Default to 1, can be calculated based on dimensions
@@ -84,12 +84,12 @@ export class MissionsService {
           volume_m3: volume || 0,
           special_instructions: createMissionDto.loading_instructions || createMissionDto.delivery_instructions,
           fragile: createMissionDto.fragile || false,
-          
+
           // Timing
           pickup_date: new Date(createMissionDto.loading_date),
           pickup_time: createMissionDto.loading_time,
           time_slot: createMissionDto.loading_time, // Temporary - will be removed after Prisma client regeneration
-          
+
           // Pricing
           distance_km: distance,
           base_price: pricing.basePrice,
@@ -97,10 +97,10 @@ export class MissionsService {
           commission_rate: 0.10, // 10% platform commission
           commission_amount: pricing.commissionAmount,
           vat_rate: 0.20, // 20% VAT
-          
+          vat_amount: pricing.vatAmount,
           // Status
           status: MissionStatus.CREATED,
-          
+
           // Relations
           shipper: {
             connect: { id: shipperId }
@@ -161,7 +161,7 @@ export class MissionsService {
 
   async getMyMissions(userId: string, userType: string) {
     try {
-      const whereClause = userType === 'shipper' 
+      const whereClause = userType === 'shipper'
         ? { shipper_id: userId }
         : { carrier_id: userId };
 
@@ -209,37 +209,37 @@ export class MissionsService {
         where: { id: carrierId },
         select: { id: true, type: true, status: true }
       });
-  
+
       if (!carrier) {
         throw new BadRequestException('Carrier not found');
       }
-  
+
       if (carrier.type !== 'carrier') {
         throw new BadRequestException('Only carriers can accept missions');
       }
-  
+
       if (carrier.status !== 1) {
         throw new BadRequestException('Carrier account is not active');
       }
-  
+
       // Check if mission exists and is available
       const mission = await this.prisma.mission.findUnique({
         where: { id: missionId },
       });
-  
+
       if (!mission) {
         throw new NotFoundException('Mission not found');
       }
-  
+
       if (mission.status !== MissionStatus.SEARCHING_CARRIER && mission.status !== MissionStatus.CREATED) {
         throw new BadRequestException('Mission is not available for acceptance');
       }
-  
+
       // Check if mission already has a selected carrier
       if (mission.carrier_id) {
         throw new BadRequestException('Mission has already been assigned to a carrier');
       }
-  
+
       // Check if carrier has already accepted this mission
       const existingAcceptance = await this.prisma.missionAcceptance.findUnique({
         where: {
@@ -249,11 +249,11 @@ export class MissionsService {
           },
         },
       });
-  
+
       if (existingAcceptance) {
         throw new BadRequestException('You have already accepted this mission');
       }
-  
+
       // Create mission acceptance record (PENDING status)
       const acceptance = await this.prisma.missionAcceptance.create({
         data: {
@@ -277,9 +277,9 @@ export class MissionsService {
           },
         },
       });
-  
+
       // TODO: Send notification to shipper about new acceptance
-  
+
       return {
         success: true,
         message: 'Mission acceptance submitted successfully. Waiting for shipper selection.',
@@ -345,20 +345,20 @@ export class MissionsService {
   private calculatePricing(distance: number, shipmentType: ShipmentType) {
     // Base pricing per km
     const baseRatePerKm = shipmentType === ShipmentType.EXPRESS ? 1.20 : 0.70; // Express +30%
-    
+
     const basePrice = distance * baseRatePerKm;
     const commissionRate = 0.10; // 10% platform commission
     const vatRate = 0.20; // 20% VAT
-    
+
     // Calculate commission (platform charge)
     const commissionAmount = basePrice * commissionRate;
-    
+
     // Calculate price including commission (before VAT)
     const priceWithCommission = basePrice + commissionAmount;
-    
+
     // Calculate VAT on the total (base + commission)
     const vatAmount = priceWithCommission * vatRate;
-    
+
     // Final price = base + commission + VAT
     const finalPrice = priceWithCommission + vatAmount;
 
