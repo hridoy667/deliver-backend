@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { MissionStatus } from '@prisma/client';
-import { ShipmentType, TemperatureRange } from './create-mission.dto';
+import { MissionStatus, ShipmentType } from '@prisma/client';
+import { TemperatureRange } from './create-mission.dto';
 
 export class MissionResponseDto {
   @ApiProperty()

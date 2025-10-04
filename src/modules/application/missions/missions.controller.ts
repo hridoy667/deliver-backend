@@ -31,14 +31,6 @@ export class MissionsController {
     const userId = (req as any).user.id;
     const userType = (req as any).user.type;
 
-    // Debug logging
-    console.log('JWT User Info:', {
-      id: userId,
-      type: userType,
-      fullUser: (req as any).user
-    });
-    
-    console.log('Mission DTO:', createMissionDto);
 
     // Only shippers can create missions
     if (userType !== 'shipper') {

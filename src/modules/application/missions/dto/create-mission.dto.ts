@@ -1,15 +1,13 @@
 import { IsString, IsNumber, IsOptional, IsBoolean, IsDateString, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
-export enum ShipmentType {
-  FREIGHT = 'freight',
-  EXPRESS = 'express'
-}
+import { ShipmentType } from '@prisma/client';
 
 export enum TemperatureRange {
-  FRESH = 'fresh', // +0°C to +7°C
-  FROZEN = 'frozen', // -18°C to 0°C
-  OTHER = 'other'
+  FROZEN = 'FROZEN', // -18°C to 0°C
+  REFRIGERATED = 'REFRIGERATED', // +0°C to +7°C
+  AMBIENT = 'AMBIENT', // +15°C to +25°C
+  CONTROLLED = 'CONTROLLED', // +2°C to +8°C
+  OTHER = 'OTHER' // Custom temperature requirement
 }
 
 export class CreateMissionDto {
@@ -62,15 +60,10 @@ export class CreateMissionDto {
   @IsString()
   goods_type: string;
 
-  @ApiProperty({ enum: TemperatureRange, description: 'Required temperature range', required: false })
+  @ApiProperty({ enum: TemperatureRange, description: 'Predefined temperature range', required: false })
   @IsOptional()
   @IsEnum(TemperatureRange)
-  temperature_range?: TemperatureRange;
-
-  @ApiProperty({ description: 'Other goods type specification', required: false })
-  @IsOptional()
-  @IsString()
-  other_goods_type?: string;
+  temperature_required?: TemperatureRange;
 
   @ApiProperty({ description: 'Package length in meters', required: false })
   @IsOptional()
@@ -148,6 +141,11 @@ export class CreateMissionDto {
   @IsOptional()
   @IsString()
   message?: string;
+
+  @ApiProperty({ description: 'Delivery message for recipient', required: false })
+  @IsOptional()
+  @IsString()
+  delivery_message?: string;
 
   @ApiProperty({ description: 'Total distance in km', required: false })
   @IsOptional()

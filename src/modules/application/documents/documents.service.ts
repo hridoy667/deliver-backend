@@ -297,6 +297,133 @@ export class DocumentsService {
   }
 
   /**
+   * Update a document (metadata and/or file replacement)
+   */
+  async updateDocument(
+    documentId: string, 
+    userId: string, 
+    updateData: { file_name?: string; expires_at?: string },
+    newFile?: Express.Multer.File
+  ) {
+    try {
+      const document = await this.prisma.document.findFirst({
+        where: {
+          id: documentId,
+          user_id: userId,
+        },
+      });
+
+      if (!document) {
+        throw new BadRequestException('Document not found');
+      }
+
+      // Prepare update data
+      const updatePayload: any = {
+        updated_at: new Date(),
+      };
+
+      // Handle file replacement
+      if (newFile) {
+        // Delete old file from storage
+        await SojebStorage.delete(
+          appConfig().storageUrl.documents + document.file_url,
+        );
+
+        // Generate unique filename for new file
+        const uniqueFileName = `${StringHelper.randomString()}_${newFile.originalname}`;
+        const filePath = appConfig().storageUrl.documents + uniqueFileName;
+
+        // Upload new file to storage
+        await SojebStorage.put(filePath, newFile.buffer);
+
+        // Update file information
+        updatePayload.file_url = uniqueFileName;
+        updatePayload.file_name = updateData.file_name || newFile.originalname;
+        updatePayload.file_size = newFile.size;
+        updatePayload.status = 'PENDING'; // Reset status when file is replaced
+        updatePayload.reviewed_at = null; // Reset review status
+        updatePayload.rejection_reason = null; // Clear rejection reason
+      } else {
+        // Only update metadata if no new file
+        if (updateData.file_name) {
+          updatePayload.file_name = updateData.file_name;
+        }
+      }
+
+      if (updateData.expires_at) {
+        updatePayload.expires_at = new Date(updateData.expires_at);
+      }
+
+      const updatedDocument = await this.prisma.document.update({
+        where: {
+          id: documentId,
+        },
+        data: updatePayload,
+      });
+
+      return {
+        success: true,
+        message: newFile ? 'Document file and metadata updated successfully' : 'Document metadata updated successfully',
+        data: {
+          ...updatedDocument,
+          file_url: SojebStorage.url(appConfig().storageUrl.documents + updatedDocument.file_url),
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get expiring documents for a user
+   */
+  async getExpiringDocuments(userId: string, daysAhead: number = 30) {
+    try {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + daysAhead);
+
+      const expiringDocuments = await this.prisma.document.findMany({
+        where: {
+          user_id: userId,
+          expires_at: {
+            not: null,
+            lte: futureDate,
+            gte: new Date(), // Only future expiration dates
+          },
+          status: 'APPROVED', // Only approved documents
+        },
+        orderBy: {
+          expires_at: 'asc',
+        },
+      });
+
+      // Add full URLs to documents
+      const documentsWithUrls = expiringDocuments.map((doc) => ({
+        ...doc,
+        file_url: SojebStorage.url(appConfig().storageUrl.documents + doc.file_url),
+        days_until_expiry: doc.expires_at ? Math.ceil((doc.expires_at.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
+      }));
+
+      return {
+        success: true,
+        data: {
+          documents: documentsWithUrls,
+          total_count: documentsWithUrls.length,
+          days_ahead: daysAhead,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  /**
    * Delete a document
    */
   async deleteDocument(documentId: string, userId: string) {

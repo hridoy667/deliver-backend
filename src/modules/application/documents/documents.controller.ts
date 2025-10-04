@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Delete,
   Body,
   Param,
@@ -19,6 +20,7 @@ import { DocumentType, DocumentStatus } from '@prisma/client';
 import { DocumentTypeEnum } from './dto/upload-document.dto';
 import { ReviewDocumentDto } from './dto/review-document.dto';
 import { GetDocumentsByStatusDto } from './dto/get-documents-by-status.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
 import { memoryStorage } from 'multer';
 
 @ApiTags('documents')
@@ -118,6 +120,56 @@ export class DocumentsController {
       const userId = req.user.userId;
       const userType = req.user.type;
       return await this.documentsService.checkRequiredDocuments(userId, userType);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  @ApiOperation({ summary: 'Update a document (metadata and/or file replacement)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Put(':documentId')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  async updateDocument(
+    @Param('documentId') documentId: string,
+    @Body() updateDocumentDto: UpdateDocumentDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    try {
+      const userId = req.user.userId;
+      return await this.documentsService.updateDocument(documentId, userId, updateDocumentDto, file);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+
+  @ApiOperation({ summary: 'Get expiring documents' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('expiring')
+  async getExpiringDocuments(
+    @Req() req: any,
+    @Query('days') days?: string,
+  ) {
+    try {
+      const userId = req.user.userId;
+      const daysAhead = days ? parseInt(days, 10) : 30;
+      return await this.documentsService.getExpiringDocuments(userId, daysAhead);
     } catch (error) {
       return {
         success: false,

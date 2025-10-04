@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { CreateMissionDto, ShipmentType } from './dto/create-mission.dto';
-import { MissionStatus } from '@prisma/client';
+import { CreateMissionDto } from './dto/create-mission.dto';
+import { MissionStatus, ShipmentType } from '@prisma/client';
 import { AcceptMissionDto } from './dto/accept-mission.dto';
 import { SetPriceDto } from './dto/set-price.dto';
 import { SelectCarrierDto } from './dto/select-carrier.dto';
@@ -13,7 +13,6 @@ export class MissionsService {
   async createMission(createMissionDto: CreateMissionDto, shipperId: string) {
     try {
       // Debug: Check if shipper exists
-      console.log('Creating mission for shipper ID:', shipperId);
       
       const shipper = await this.prisma.user.findUnique({
         where: { id: shipperId },
@@ -24,7 +23,6 @@ export class MissionsService {
         throw new BadRequestException(`Shipper with ID ${shipperId} not found`);
       }
       
-      console.log('Found shipper:', shipper);
 
       // Calculate distance if not provided
       let distance = createMissionDto.distance_km;
@@ -49,7 +47,35 @@ export class MissionsService {
         data: {
           // Address Information
           pickup_address: `${createMissionDto.loading_address}, ${createMissionDto.loading_city} ${createMissionDto.loading_postal_code}`,
+          pickup_city: createMissionDto.loading_city,
+          pickup_postal_code: createMissionDto.loading_postal_code,
           delivery_address: `${createMissionDto.delivery_address}, ${createMissionDto.delivery_city} ${createMissionDto.delivery_postal_code}`,
+          delivery_city: createMissionDto.delivery_city,
+          delivery_postal_code: createMissionDto.delivery_postal_code,
+          
+          // Contact Information
+          pickup_contact_name: createMissionDto.loading_staff_name || 'Contact Name',
+          pickup_contact_phone: createMissionDto.shipper_phone,
+          delivery_contact_name: createMissionDto.recipient_name,
+          delivery_contact_phone: createMissionDto.recipient_phone,
+          
+          // Shipment Details
+          shipment_type: createMissionDto.shipment_type,
+          temperature_required: createMissionDto.temperature_required,
+          
+          // Package Dimensions
+          package_length: createMissionDto.length_m,
+          package_width: createMissionDto.width_m,
+          package_height: createMissionDto.height_m,
+          
+          // Delivery Timing
+          delivery_date: createMissionDto.delivery_date ? new Date(createMissionDto.delivery_date) : null,
+          delivery_time: createMissionDto.delivery_time,
+          
+          // Instructions
+          pickup_instructions: createMissionDto.loading_instructions,
+          delivery_instructions: createMissionDto.delivery_instructions,
+          delivery_message: createMissionDto.delivery_message,
           
           // Goods Information
           goods_type: createMissionDto.goods_type,
@@ -61,20 +87,24 @@ export class MissionsService {
           
           // Timing
           pickup_date: new Date(createMissionDto.loading_date),
-          time_slot: createMissionDto.loading_time,
+          pickup_time: createMissionDto.loading_time,
+          time_slot: createMissionDto.loading_time, // Temporary - will be removed after Prisma client regeneration
           
           // Pricing
           distance_km: distance,
           base_price: pricing.basePrice,
           final_price: pricing.finalPrice,
-          commission_rate: 0.10, // 10% commission
+          commission_rate: 0.10, // 10% platform commission
           commission_amount: pricing.commissionAmount,
+          vat_rate: 0.20, // 20% VAT
           
           // Status
           status: MissionStatus.CREATED,
           
           // Relations
-          shipper_id: shipperId,
+          shipper: {
+            connect: { id: shipperId }
+          },
         },
       });
 
@@ -285,14 +315,26 @@ export class MissionsService {
     const baseRatePerKm = shipmentType === ShipmentType.EXPRESS ? 1.20 : 0.70; // Express +30%
     
     const basePrice = distance * baseRatePerKm;
-    const commissionRate = 0.10; // 10%
+    const commissionRate = 0.10; // 10% platform commission
+    const vatRate = 0.20; // 20% VAT
+    
+    // Calculate commission (platform charge)
     const commissionAmount = basePrice * commissionRate;
-    const finalPrice = basePrice + commissionAmount;
+    
+    // Calculate price including commission (before VAT)
+    const priceWithCommission = basePrice + commissionAmount;
+    
+    // Calculate VAT on the total (base + commission)
+    const vatAmount = priceWithCommission * vatRate;
+    
+    // Final price = base + commission + VAT
+    const finalPrice = priceWithCommission + vatAmount;
 
     return {
       basePrice: Math.round(basePrice * 100) / 100,
-      finalPrice: Math.round(finalPrice * 100) / 100,
       commissionAmount: Math.round(commissionAmount * 100) / 100,
+      vatAmount: Math.round(vatAmount * 100) / 100,
+      finalPrice: Math.round(finalPrice * 100) / 100,
     };
   }
 
@@ -546,14 +588,12 @@ export class MissionsService {
   // Enhanced accept mission method using MissionAcceptance model
   async acceptMissionEnhanced(missionId: string, carrierId: string, acceptMissionDto: AcceptMissionDto) {
     try {
-      console.log('Accepting mission with ID:', missionId, 'for carrier:', carrierId);
       
       // Check if mission exists and is available
       const mission = await this.prisma.mission.findUnique({
         where: { id: missionId },
       });
 
-      console.log('Found mission:', mission);
 
       if (!mission) {
         throw new NotFoundException('Mission not found');
@@ -582,12 +622,6 @@ export class MissionsService {
       }
 
       // Create mission acceptance record
-      console.log('Creating MissionAcceptance with data:', {
-        mission_id: missionId,
-        carrier_id: carrierId,
-        message: acceptMissionDto.message,
-        status: 'PENDING',
-      });
 
       const acceptance = await this.prisma.missionAcceptance.create({
         data: {
@@ -608,7 +642,6 @@ export class MissionsService {
         },
       });
 
-      console.log('Created MissionAcceptance:', acceptance);
 
       // TODO: Send notification to shipper about new acceptance
 
